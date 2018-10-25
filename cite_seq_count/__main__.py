@@ -195,8 +195,41 @@ def check_read_lengths(R1_length, R2_length, args):
     if(barcode_umi_length) > R1_length:
         sys.exit('Read 1 length is shorter than the option you are using for cell and UMI barcodes length. Please check your options and rerun.')
     elif(barcode_umi_length) < R1_length:
-        print('**WARNING**\nRead 1 length is {}bp but you are using {}bp for cell and UMI barcodes combined.\nThis might lead to wrong cell attribution and skewed umi counts.\n'.format(R1_length, barcode_umi_length))
+        print('**WARNING**\nRead 1 length is {}bp but you are using {}bp for cell and UMI barcodes combined.\n Please be certain you are using the correct positions for the cell barcode and UMI.\n'.format(R1_length, barcode_umi_length))
+    
     return(barcode_slice, umi_slice, barcode_umi_length)
+
+def process_chunk(chunk, chunk_num):
+    t = time.time()
+    results = {chunk_num:{}}
+
+    for line in chunk:
+        R1=line[0].strip()
+        R2=line[1].strip()[:6]
+        cell_barcode = R1[:16]
+        umi_barcode = R1[16:]
+        comb = cell_barcode
+        if(comb in results[chunk_num]):
+            results[chunk_num][comb] += 1
+        else:
+            results[chunk_num][comb] = 1
+    print('Processed {} reads in {:.4} seconds'.format(len(chunk), time.time()-t))
+    return(results)
+            
+
+def grouper(n, iterable, padvalue=None):
+    """grouper(3, 'abcdefg', 'x') -->
+    ('a','b','c'), ('d','e','f'), ('g','x','x')"""
+
+    return zip_longest(*[iter(iterable)]*n, fillvalue=padvalue)
+
+def stream_input(Read1, Read2):
+    textfile1 = gzip.open(Read1, 'rt')
+    textfile2 = gzip.open(Read2, 'rt')
+    # Read all 2nd lines from 4 line chunks. If first_n not None read only 4 times the given amount.
+    secondlines = islice(zip(textfile1, textfile2), 1, None, 4)
+    for R1, R2 in secondlines:
+        yield((R1,R2))
 
 def main():
     parser = get_args()
