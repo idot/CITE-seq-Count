@@ -318,6 +318,8 @@ def main():
         print('{:,} uniques reads loaded'.format(len(unique_lines)))
 
     n = 1
+    max_length = max(regex_patterns.keys())
+    ratio = int((1-args.hamming_thresh/max_length)*100)
     for line in unique_lines:
         if n % 1000000 == 0:
             print("Processed 1,000,000 lines in {:.4} secondes. Total "
@@ -353,20 +355,20 @@ def main():
                 if match:
                     # Increment read count
                     res_table[cell_barcode]['total_reads'] += 1
-
-                    rez=process.extractOne(TAG_seq[:length], choices=ab_map.keys(), scorer=fuzz.ratio)
-                    ratio = int((1-args.hamming_thresh/length)*100)
-                    if args.debug:
-                        print(rez)
-                        print(ratio)
-                    if(rez[1] > ratio):
-                        res_table[cell_barcode][rez[0]] += 1
-                        continue
-                    else:
-                        res_table[cell_barcode]['no_match'] += 1
-                        continue
                 else:
                     res_table[cell_barcode]['bad_struct'] += 1
+                    continue
+
+            rez=process.extractOne(TAG_seq[:max_length], choices=ab_map.keys(), scorer=fuzz.ratio)
+            if args.debug:
+                print(rez)
+                print(ratio)
+            if(rez[1] > ratio):
+                res_table[cell_barcode][rez[0]] += 1
+                continue
+            else:
+                res_table[cell_barcode]['no_match'] += 1
+                continue
 
 
             
