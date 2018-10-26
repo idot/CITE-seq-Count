@@ -8,8 +8,7 @@ import csv
 import warnings
 from collections import defaultdict
 from collections import OrderedDict
-from itertools import islice
-from itertools import combinations
+from itertools import islice, zip_longest, combinations
 import pandas as pd
 import time
 import locale
@@ -18,6 +17,9 @@ import regex
 import argparse
 from argparse import RawTextHelpFormatter
 import pkg_resources
+from multiprocessing import Pool
+from fuzzywuzzy import process, fuzz
+
 version = pkg_resources.require("cite_seq_count")[0].version
 
 
@@ -199,20 +201,21 @@ def check_read_lengths(R1_length, R2_length, args):
     
     return(barcode_slice, umi_slice, barcode_umi_length)
 
-def process_chunk(chunk, chunk_num):
+def process_chunk(chunk, barcode_slice, umi_slice, tag_lengths, ab_map):
     t = time.time()
-    results = {chunk_num:{}}
-
+    results = defaultdict(lambda: defaultdict(int))
     for line in chunk:
         R1=line[0].strip()
-        R2=line[1].strip()[:6]
-        cell_barcode = R1[:16]
-        umi_barcode = R1[16:]
-        comb = cell_barcode
-        if(comb in results[chunk_num]):
-            results[chunk_num][comb] += 1
+        tag=line[1].strip()[:max(tag_lengths)]
+        cell_barcode = R1[barcode_slice]
+        umi_barcode = R1[umi_slice]
+        print(process.extractOne(tag, ab_map.keys()))
+
+
+        if(cell_barcode in results):
+            results[comb][tag] += 1
         else:
-            results[chunk_num][comb] = 1
+            results[comb] = 1
     print('Processed {} reads in {:.4} seconds'.format(len(chunk), time.time()-t))
     return(results)
             
@@ -223,11 +226,11 @@ def grouper(n, iterable, padvalue=None):
 
     return zip_longest(*[iter(iterable)]*n, fillvalue=padvalue)
 
-def stream_input(Read1, Read2):
+def stream_input(Read1, Read2, args):
     textfile1 = gzip.open(Read1, 'rt')
     textfile2 = gzip.open(Read2, 'rt')
     # Read all 2nd lines from 4 line chunks. If first_n not None read only 4 times the given amount.
-    secondlines = islice(zip(textfile1, textfile2), 1, None, 4)
+    secondlines = islice(zip(textfile1, textfile2), 1, (args.first_n * 4 if args.first_n is not None else args.first_n), 4)
     for R1, R2 in secondlines:
         yield((R1,R2))
 
@@ -267,6 +270,30 @@ def main():
     # Check that read 1 and options match and define slices
     (barcode_slice, umi_slice, barcode_umi_length) = check_read_lengths(R1_length, R2_length, args)
     
+    # lines = stream_input(Read1=args.read1_path, Read2=args.read1_path, args=args)
+    # #print(lines)
+    # # test data
+    # # Create pool (p)
+    # nCores = 4
+    # pool = Pool(nCores)
+
+    # print('Loading reads')
+    # final = []
+    # for chunk in grouper(100000, lines):
+    #     #pool.async_apply(process_chunk, args=(results,chunk))
+    #     final.append(pool.apply_async(
+    #         process_chunk, (chunk,
+    #             barcode_slice,
+    #             umi_slice,
+    #             regex_patterns.keys(),
+    #             ab_map)))
+    #     #results = p.map(process_chunk, d, chunk)
+    # pool.close()
+    # pool.join()
+    # print('Loading done')
+    # print(len(final))
+    # sys.exit()
+
     unique_lines = set()
     with gzip.open(args.read1_path, 'rt') as textfile1, \
             gzip.open(args.read2_path, 'rt') as textfile2:
@@ -290,78 +317,58 @@ def main():
         print('{:,} reads loaded'.format(n))
         print('{:,} uniques reads loaded'.format(len(unique_lines)))
 
-        n = 1
-        for line in unique_lines:
-            if n % 1000000 == 0:
-                print("Processed 1,000,000 lines in {:.4} secondes. Total "
-                      "lines processed: {:,}".format(time.time()-t, n))
-                t = time.time()
+    n = 1
+    for line in unique_lines:
+        if n % 1000000 == 0:
+            print("Processed 1,000,000 lines in {:.4} secondes. Total "
+                  "lines processed: {:,}".format(time.time()-t, n))
+            t = time.time()
 
-            cell_barcode = line[barcode_slice]
-            if args.whitelist:
-                if cell_barcode not in whitelist:
-                    n += 1
-                    continue
+        cell_barcode = line[barcode_slice]
+        if args.whitelist:
+            if cell_barcode not in whitelist:
+                n += 1
+                continue
 
 
-            UMI = line[umi_slice]
-            TAG_seq = line[barcode_umi_length:]
-            BC_UMI_TAG = cell_barcode + UMI + TAG_seq
-            if args.debug:
-                print("\nline:{0}\ncell_barcode:{1}\tUMI:{2}\tTAG_seq:{3}\nline length:{4}\tcell barcode length:{5}\tUMI length:{6}\tTAG sequence length:{7}".format(line, cell_barcode,
-                                                  UMI, TAG_seq, len(line), len(cell_barcode), len(UMI), len(TAG_seq)))
+        UMI = line[umi_slice]
+        TAG_seq = line[barcode_umi_length:]
+        BC_UMI_TAG = cell_barcode + UMI + TAG_seq
+        if args.debug:
+            print("\nline:{0}\ncell_barcode:{1}\tUMI:{2}\tTAG_seq:{3}\nline length:{4}\tcell barcode length:{5}\tUMI length:{6}\tTAG sequence length:{7}".format(line, cell_barcode,
+                                              UMI, TAG_seq, len(line), len(cell_barcode), len(UMI), len(TAG_seq)))
 
-            # Check if UMI + TAG already in the set
-            if BC_UMI_TAG not in UMI_reduce:
-                # Check structure of the TAG
-                no_structure_match=True
-                for length in regex_patterns.keys():
-                    match = regex.search(r'(?:({})){{i<={}}}'.format(regex_patterns[length]['regex'],args.hamming_thresh), TAG_seq)
+        # Check if UMI + TAG already in the set
+        n += 1
+        if BC_UMI_TAG not in UMI_reduce:
+            # Add BC_UMI_TAG to set
+            UMI_reduce.add(BC_UMI_TAG)
+            # Check structure of the TAG
+            for length in regex_patterns.keys():
+                match = regex.search(r'(?:({})){{i<={}}}'.format(regex_patterns[length]['regex'],args.hamming_thresh), TAG_seq)
+                if args.debug:
+                    print("{0}\t{1}".format(regex_patterns[length]['regex'], TAG_seq))
+                    print(match)
+
+                if match:
+                    # Increment read count
+                    res_table[cell_barcode]['total_reads'] += 1
+
+                    rez=process.extractOne(TAG_seq[:length], choices=ab_map.keys(), scorer=fuzz.ratio)
+                    ratio = int((1-args.hamming_thresh/length)*100)
                     if args.debug:
-                        print("{0}\t{1}".format(regex_patterns[length]['regex'], TAG_seq))
-                        print(match)
-
-                    if match:
-                        no_structure_match=False
-                        TAG_seq = match.group(0)[0:length]
-
-                        # Increment read count
-                        res_table[cell_barcode]['total_reads'] += 1
-
-                        # Get distance from all barcodes
-                        temp_res = defaultdict()
-                        for key, value in regex_patterns[length]['mapping'].items():
-                            temp_res[value] = Levenshtein.hamming(TAG_seq, key)
-                        # Get smallest value and get respective tag_name
-                        min_value = min(temp_res.values())
-                        min_index = list(temp_res.values()).index(min_value)
-                        best = list(temp_res.keys())[min_index]
-
-                        # ambiguous
-                        if not isinstance(min_value, int):
-                            if args.debug:
-                                print("{0}\t{1}\t{2}\t{3}\t{4}".format(
-                                      cell_barcode, UMI, x, y, TAG_seq))
-
-                            res_table[cell_barcode]['ambiguous'] += 1
-                            continue
-
-                        # If over threshold
-                        if min_value >= args.hamming_thresh:
-                            res_table[cell_barcode]['no_match'] += 1
-                            no_match_table[TAG_seq] += 1
-                            continue
-
-                        res_table[cell_barcode][best] += 1
-
-                        # Increment bad structure
-                if(no_structure_match):
+                        print(rez)
+                        print(ratio)
+                    if(rez[1] > ratio):
+                        res_table[cell_barcode][rez[0]] += 1
+                        continue
+                    else:
+                        res_table[cell_barcode]['no_match'] += 1
+                        continue
+                else:
                     res_table[cell_barcode]['bad_struct'] += 1
 
-                # Add BC_UMI_TAG to set
-                UMI_reduce.add(BC_UMI_TAG)
 
-            n += 1
             
     print("Done counting")
     res_matrix = pd.DataFrame(res_table)
