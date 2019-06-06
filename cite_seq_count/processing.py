@@ -223,6 +223,8 @@ def correct_umis(final_results, collapsing_threshold, top_cells, max_umis):
     aberrant_umi_count_cells = set()
     for cell_barcode in top_cells:
         for TAG in final_results[cell_barcode]:
+            if TAG == 'unmapped':
+                continue
             n_umis = len(final_results[cell_barcode][TAG])
             if n_umis > 1 and n_umis <= max_umis:
                 umi_clusters = network.UMIClusterer()
@@ -353,7 +355,7 @@ def correct_cells_whitelist(final_results, umis_per_cell, whitelist, collapsing_
     print('Processing {:,} cell barcodes'.format(n_barcodes))
 
     #Run with one process
-    (true_to_false,in_whitelist,not_in_whitelist) = find_true_to_false_map(
+    true_to_false = find_true_to_false_map(
             barcode_tree=barcode_tree,
             cell_barcodes=cell_barcodes,
             whitelist=whitelist,
@@ -368,38 +370,46 @@ def correct_cells_whitelist(final_results, umis_per_cell, whitelist, collapsing_
             ab_map)
     return(final_results, umis_per_cell, corrected_barcodes)
 
+def filter_low_cells(final_results, umis_per_cell, reads_per_cell):
+    """
+    """
+    low_cells = set()
+    for cell in reads_per_cell:
+        if (reads_per_cell[cell] <= 1):
+            low_cells.add(cell)
+            final_results.pop(cell)
+    for cell in low_cells:
+        reads_per_cell.pop(cell)
+        umis_per_cell.pop(cell)
     
+    print('Removed {} cells with one read'.format(len(low_cells)))
+    return(final_results, umis_per_cell, reads_per_cell)
+
 
 
 def find_true_to_false_map(barcode_tree, cell_barcodes, whitelist, collapsing_threshold):
     """
     """
-    in_whitelist = set()
-    not_in_whitelist = set()
     true_to_false = defaultdict(set)
     for i, cell_barcode in enumerate(cell_barcodes):
         if cell_barcode in whitelist:
             # if the barcode is already whitelisted, no need to add
-            in_whitelist.add(cell_barcode)
+            continue
+        # get all members of whitelist that are at distance of collapsing_threshold
+        candidates = [white_cell for d, white_cell in barcode_tree.find(cell_barcode, collapsing_threshold) if d > 0]
+        if len(candidates) == 1:
+            white_cell_str = candidates[0]
+            true_to_false[white_cell_str].add(cell_barcode)
+        elif len(candidates) == 0:
+            # the cell doesnt match to any whitelisted barcode,
+            # hence we have to drop it
+            # (as it cannot be asscociated with any frequent barcode)
             continue
         else:
-            not_in_whitelist.add(cell_barcode)
-
-        # # get all members of whitelist that are at distance of collapsing_threshold
-        # candidates = [white_cell for d, white_cell in barcode_tree.find(cell_barcode, collapsing_threshold) if d > 0]
-        # if len(candidates) == 1:
-        #     white_cell_str = candidates[0]
-        #     true_to_false[white_cell_str].add(cell_barcode)
-        # elif len(candidates) == 0:
-        #     # the cell doesnt match to any whitelisted barcode,
-        #     # hence we have to drop it
-        #     # (as it cannot be asscociated with any frequent barcode)
-        #     continue
-        # else:
-        #     # more than on whitelisted candidate:
-        #     # we drop it as its not uniquely assignable
-        #     continue
-    return(true_to_false, in_whitelist, not_in_whitelist)
+            # more than on whitelisted candidate:
+            # we drop it as its not uniquely assignable
+            continue
+    return(true_to_false)
 
 
 

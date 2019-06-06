@@ -335,6 +335,8 @@ def main():
         ordered_tags_map[tag] = i
     ordered_tags_map['unmapped'] = i + 1
 
+    (final_results, umis_per_cell, reads_per_cell) = processing.filter_low_cells(final_results, umis_per_cell, reads_per_cell)
+
     # Correct cell barcodes
     if(len(umis_per_cell) <= args.expected_cells):
         print("Number of expected cells, {}, is higher " \
@@ -417,6 +419,7 @@ def main():
         top_cells=aberrant_cells)
     
     #Write uncorrected cells to dense output
+
     io.write_dense(
             sparse_matrix=umi_aberrant_matrix,
             index=list(ordered_tags_map.keys()),
@@ -433,14 +436,6 @@ def main():
         ordered_tags_map=ordered_tags_map,
         top_cells=top_cells)
     
-    # Write umis to file
-    io.write_to_files(
-        sparse_matrix=umi_results_matrix,
-        top_cells=top_cells,
-        ordered_tags_map=ordered_tags_map,
-        data_type='umi',
-        outfolder=args.outfolder)
-    
     # Write reads to file
     io.write_to_files(
         sparse_matrix=read_results_matrix,
@@ -448,7 +443,15 @@ def main():
         ordered_tags_map=ordered_tags_map,
         data_type='read',
         outfolder=args.outfolder)
-    
+    ordered_tags_map.pop('unmapped')    
+    # Write umis to file
+    io.write_to_files(
+        sparse_matrix=umi_results_matrix,
+        top_cells=top_cells,
+        ordered_tags_map=ordered_tags_map,
+        data_type='umi',
+        outfolder=args.outfolder)
+
     #Write unmapped sequences
     io.write_unmapped(
         merged_no_match=merged_no_match,
