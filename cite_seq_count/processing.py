@@ -353,7 +353,7 @@ def correct_cells_whitelist(final_results, umis_per_cell, whitelist, collapsing_
     print('Processing {:,} cell barcodes'.format(n_barcodes))
 
     #Run with one process
-    true_to_false = find_true_to_false_map(
+    (true_to_false,in_whitelist,not_in_whitelist) = find_true_to_false_map(
             barcode_tree=barcode_tree,
             cell_barcodes=cell_barcodes,
             whitelist=whitelist,
@@ -374,26 +374,32 @@ def correct_cells_whitelist(final_results, umis_per_cell, whitelist, collapsing_
 def find_true_to_false_map(barcode_tree, cell_barcodes, whitelist, collapsing_threshold):
     """
     """
+    in_whitelist = set()
+    not_in_whitelist = set()
     true_to_false = defaultdict(set)
     for i, cell_barcode in enumerate(cell_barcodes):
         if cell_barcode in whitelist:
             # if the barcode is already whitelisted, no need to add
-            continue
-        # get all members of whitelist that are at distance of collapsing_threshold
-        candidates = [white_cell for d, white_cell in barcode_tree.find(cell_barcode, collapsing_threshold) if d > 0]
-        if len(candidates) == 1:
-            white_cell_str = candidates[0]
-            true_to_false[white_cell_str].add(cell_barcode)
-        elif len(candidates) == 0:
-            # the cell doesnt match to any whitelisted barcode,
-            # hence we have to drop it
-            # (as it cannot be asscociated with any frequent barcode)
+            in_whitelist.add(cell_barcode)
             continue
         else:
-            # more than on whitelisted candidate:
-            # we drop it as its not uniquely assignable
-            continue
-    return(true_to_false)
+            not_in_whitelist.add(cell_barcode)
+
+        # # get all members of whitelist that are at distance of collapsing_threshold
+        # candidates = [white_cell for d, white_cell in barcode_tree.find(cell_barcode, collapsing_threshold) if d > 0]
+        # if len(candidates) == 1:
+        #     white_cell_str = candidates[0]
+        #     true_to_false[white_cell_str].add(cell_barcode)
+        # elif len(candidates) == 0:
+        #     # the cell doesnt match to any whitelisted barcode,
+        #     # hence we have to drop it
+        #     # (as it cannot be asscociated with any frequent barcode)
+        #     continue
+        # else:
+        #     # more than on whitelisted candidate:
+        #     # we drop it as its not uniquely assignable
+        #     continue
+    return(true_to_false, in_whitelist, not_in_whitelist)
 
 
 
