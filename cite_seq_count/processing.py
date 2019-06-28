@@ -196,6 +196,8 @@ def merge_results(parallel_results):
             if cell_barcode not in merged_results:
                 merged_results[cell_barcode] = defaultdict(Counter)
             for TAG in mapped[cell_barcode]:
+                if (TAG == 'unmapped'):
+                    continue
                 # Test the counter. Returns false if empty
                 if mapped[cell_barcode][TAG]:
                     for UMI in mapped[cell_barcode][TAG]:
@@ -373,17 +375,19 @@ def correct_cells_whitelist(final_results, umis_per_cell, whitelist, collapsing_
 def filter_low_cells(final_results, umis_per_cell, reads_per_cell):
     """
     """
+    filtered_reads = 0
     low_cells = set()
     for cell in reads_per_cell:
         if (reads_per_cell[cell] <= 1):
+            filtered_reads += 1
             low_cells.add(cell)
             final_results.pop(cell)
     for cell in low_cells:
         reads_per_cell.pop(cell)
         umis_per_cell.pop(cell)
     
-    print('Removed {} cells with one read'.format(len(low_cells)))
-    return(final_results, umis_per_cell, reads_per_cell)
+    print('Removed {} reads from low read cells.'.format(filtered_reads))
+    return(final_results, umis_per_cell, reads_per_cell, filtered_reads)
 
 
 

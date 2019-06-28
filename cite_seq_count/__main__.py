@@ -76,7 +76,7 @@ def get_args():
     barcodes.add_argument('--umi_collapsing_dist', dest='umi_threshold',
                           required=False, type=int, default=2,
                           help="threshold for umi collapsing.")
-    barcodes.add_argument('--no_umi_correctio', required=False, action='store_true', default=False,
+    barcodes.add_argument('--no_umi_correction', required=False, action='store_true', default=False,
                         dest='no_umi_correction', help="Deactivate UMI collapsing")
     barcodes.add_argument('--bc_collapsing_dist', dest='bc_threshold',
                           required=False, type=int, default=1,
@@ -149,7 +149,7 @@ def get_args():
     return parser
 
 
-def create_report(n_reads, reads_per_cell, no_match, version, start_time, ordered_tags_map, umis_corrected, bcs_corrected, bad_cells, args):
+def create_report(n_reads, reads_per_cell, no_match, filtered_reads, version, start_time, ordered_tags_map, umis_corrected, bcs_corrected, bad_cells, args):
     """
     Creates a report with details about the run in a yaml format.
 
@@ -163,9 +163,10 @@ def create_report(n_reads, reads_per_cell, no_match, version, start_time, ordere
 
     """
     total_unmapped = sum(no_match.values())
-    total_mapped = sum(reads_per_cell.values()) - total_unmapped
+    total_mapped = sum(reads_per_cell.values())
     mapped_perc = round((total_mapped/n_reads)*100)
     unmapped_perc = round((total_unmapped/n_reads)*100)
+    filtered_perc = round((filtered_reads/n_reads)*100)
     
     with open(os.path.join(args.outfolder, 'run_report.yaml'), 'w') as report_file:
         report_file.write(
@@ -175,6 +176,7 @@ CITE-seq-Count Version: {}
 Reads processed: {}
 Percentage mapped: {}
 Percentage unmapped: {}
+Percentage filtered: {}
 Uncorrected cells: {}
 Correction:
 \tCell barcodes collapsing threshold: {}
@@ -200,6 +202,7 @@ Run parameters:
             n_reads,
             mapped_perc,
             unmapped_perc,
+            filtered_perc,
             len(bad_cells),
             args.bc_threshold,
             bcs_corrected,
@@ -290,9 +293,9 @@ def main():
         print('Mapping done')
         umis_per_cell = Counter()
         reads_per_cell = Counter()
-        for cell_barcode,counts in final_results.items():
-            umis_per_cell[cell_barcode] = sum([len(counts[UMI]) for UMI in counts])
-            reads_per_cell[cell_barcode] = sum([sum(counts[UMI].values()) for UMI in counts])
+        for cell_barcode, counts in final_results.items():
+            umis_per_cell[cell_barcode] = sum([len(counts[TAG]) for TAG in counts if TAG != 'unmapped'])
+            reads_per_cell[cell_barcode] = sum([sum(counts[TAG].values()) for TAG in counts if TAG != 'unmapped'])
     else:
         # Run with multiple processes
         print('CITE-seq-Count is running with {} cores.'.format(n_threads))
@@ -335,7 +338,7 @@ def main():
         ordered_tags_map[tag] = i
     ordered_tags_map['unmapped'] = i + 1
 
-    (final_results, umis_per_cell, reads_per_cell) = processing.filter_low_cells(final_results, umis_per_cell, reads_per_cell)
+    (final_results, umis_per_cell, reads_per_cell, filtered_reads) = processing.filter_low_cells(final_results, umis_per_cell, reads_per_cell)
 
     # Correct cell barcodes
     if(len(umis_per_cell) <= args.expected_cells):
@@ -345,30 +348,34 @@ def main():
             "".format(args.expected_cells, len(umis_per_cell)))
         bcs_corrected = 0
     else:
-        print('Correcting cell barcodes')
-        if not whitelist:
-            (
-                final_results,
-                umis_per_cell,
-                bcs_corrected
-            ) = processing.correct_cells(
-                    final_results=final_results,
-                    reads_per_cell=reads_per_cell,
-                    umis_per_cell=umis_per_cell,
-                    expected_cells=args.expected_cells,
-                    collapsing_threshold=args.bc_threshold,
-                    ab_map=ordered_tags_map)
+        if(args.bc_threshold > 0):
+            print('Correcting cell barcodes')
+            if not whitelist:
+                (
+                    final_results,
+                    umis_per_cell,
+                    bcs_corrected
+                ) = processing.correct_cells(
+                        final_results=final_results,
+                        reads_per_cell=reads_per_cell,
+                        umis_per_cell=umis_per_cell,
+                        expected_cells=args.expected_cells,
+                        collapsing_threshold=args.bc_threshold,
+                        ab_map=ordered_tags_map)
+            else:
+                (
+                    final_results,
+                    umis_per_cell,
+                    bcs_corrected) = processing.correct_cells_whitelist(
+                        final_results=final_results,
+                        umis_per_cell=umis_per_cell,
+                        whitelist=whitelist,
+                        collapsing_threshold=args.bc_threshold,
+                        n_threads=n_threads,
+                        ab_map=ordered_tags_map)
         else:
-            (
-                final_results,
-                umis_per_cell,
-                bcs_corrected) = processing.correct_cells_whitelist(
-                    final_results=final_results,
-                    umis_per_cell=umis_per_cell,
-                    whitelist=whitelist,
-                    collapsing_threshold=args.bc_threshold,
-                    n_threads=n_threads,
-                    ab_map=ordered_tags_map)
+            print('Skipping cell barcode correction')
+            bcs_corrected = 0
 
     # If given, use whitelist for top cells
     if whitelist:
@@ -464,6 +471,7 @@ def main():
         n_reads=n_reads,
         reads_per_cell=reads_per_cell,
         no_match=merged_no_match,
+        filtered_reads=filtered_reads,
         version=version,
         start_time=start_time,
         ordered_tags_map=ordered_tags_map,

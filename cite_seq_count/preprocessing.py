@@ -99,7 +99,7 @@ def test_cell_distances(whitelist, collapsing_threshold):
         for comb in all_comb:
             if Levenshtein.hamming(comb[0], comb[1]) <= collapsing_threshold:
                 collapsing_threshold -= 1
-                print('Value is too high, reducing it by 1')
+                print('Value is too high for {} and {}, reducing it by 1'.format(comb[0], comb[1]))
                 break
         else:
             ok = True
