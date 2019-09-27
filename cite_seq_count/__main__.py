@@ -334,6 +334,12 @@ def main():
     for i,tag in enumerate(ab_map.values()):
         ordered_tags_map[tag] = i
     ordered_tags_map['unmapped'] = i + 1
+    (
+        final_results,
+        umis_per_cell,
+        reads_per_cell,
+        discarded_barcodes
+        ) = processing.filter_low_content_barcodes(final_results, umis_per_cell, reads_per_cell)
 
     # Correct cell barcodes
     if(len(umis_per_cell) <= args.expected_cells):

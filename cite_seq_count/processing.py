@@ -419,3 +419,33 @@ def generate_sparse_matrices(final_results, ordered_tags_map, top_cells):
                 read_results_matrix[ordered_tags_map[TAG],i] = sum(final_results[cell_barcode][TAG].values())
     return(umi_results_matrix, read_results_matrix)
 
+
+def filter_low_content_barcodes(final_results, umis_per_cell, reads_per_cell):
+    """
+    Filter out low content cells to speed up downstream corrections
+
+    Args:
+        final_results (dict): Results in a dict of dicts of Counters.
+        umi_results_matrix (scipy.sparse.dok_matrix): UMI counts
+        read_results_matrix (scipy.sparse.dok_matrix): Read counts
+    
+    Returns:
+        final_results (dict): Results in a dict of dicts of Counters.
+        umi_results_matrix (scipy.sparse.dok_matrix): UMI counts
+        read_results_matrix (scipy.sparse.dok_matrix): Read counts
+        n_cells (int): Number of cells discarded
+
+    """
+    low_content_cells = list()
+    for cell_barcode in reads_per_cell:
+        if reads_per_cell[cell_barcode] == 1:
+            low_content_cells.add(cell_barcode)
+    n_cells = len(low_content_cells)
+    for low_cell in low_content_cells:
+        final_results.pop(low_cell)
+        umis_per_cell.pop(low_cell)
+        reads_per_cell.pop(low_cell)
+    if n_cells != 0:
+        print('Filtered {} barcodes because of low read content'.format(n_cells))
+    return(final_results, umis_per_cell, reads_per_cell, n_cells)
+
