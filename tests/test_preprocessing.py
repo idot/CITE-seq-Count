@@ -10,6 +10,7 @@ def data():
     
     # Test file paths
     pytest.correct_whitelist_path = 'tests/test_data/whitelists/correct.csv'
+    pytest.correct_whitelist_path_gz = 'tests/test_data/whitelists/correct.csv.gz'
     pytest.correct_tags_path = 'tests/test_data/tags/correct.csv'
     pytest.correct_R1_path = 'tests/test_data/fastq/correct_R1.fastq.gz'
     pytest.correct_R2_path = 'tests/test_data/fastq/correct_R2.fastq.gz'
@@ -52,6 +53,10 @@ def data():
 @pytest.mark.dependency()
 def test_parse_whitelist_csv(data):
     assert preprocessing.parse_whitelist_csv(pytest.correct_whitelist_path, 16, 1) == (pytest.correct_whitelist,1)
+
+@pytest.mark.dependency()
+def test_parse_whitelist_csv_gz(data):
+    assert preprocessing.parse_whitelist_csv(pytest.correct_whitelist_path_gz, 16, 1) == (pytest.correct_whitelist,1)
 
 @pytest.mark.dependency()
 def test_parse_tags_csv(data):

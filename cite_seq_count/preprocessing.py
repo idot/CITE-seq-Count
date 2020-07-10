@@ -49,6 +49,12 @@ def chunk_reads(n_reads, n):
     return(indexes)
     
 
+def open_txt_gz(filename):
+    if filename.endswith(".gz"):
+        return gzip.open(filename,'rt')
+    else:
+        return open(filename, 'r')    
+
 def parse_whitelist_csv(filename, barcode_length, collapsing_threshold):
     """Reads white-listed barcodes from a CSV file.
 
@@ -66,7 +72,7 @@ def parse_whitelist_csv(filename, barcode_length, collapsing_threshold):
 
     """
     STRIP_CHARS = '"0123456789- \t\n'
-    with open(filename, mode='r') as csv_file:
+    with open_txt_gz(filename) as csv_file:
         csv_reader = csv.reader(csv_file)
         cell_pattern = regex.compile(r'[ATGC]{{{}}}'.format(barcode_length))
         whitelist = [row[0].strip(STRIP_CHARS) for row in csv_reader
